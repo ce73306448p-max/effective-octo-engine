@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>생태·환경 인터랙티브 — 풀옵션</title>
+
+<!-- Google Font -->
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap" rel="stylesheet">
+
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+  :root{
+    --glass: rgba(255,255,255,0.55);
+    --accent: #2f855a;
+    --soft: #68d391;
+    font-size:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family:'Gowun Dodum',sans-serif;
+    color:#0f172a;
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    transition:background 1.5s ease;
+    background:linear-gradient(180deg,#dff7e6,#bfeccb);
+    overflow-y:auto;
+  }
+
+  header{
+    position:sticky; top:0; z-index:30;
+    backdrop-filter: blur(8px);
+    background: linear-gradient(90deg,var(--glass), rgba(255,255,255,0.25));
+    padding:12px 16px;
+    display:flex;
+    gap:12px;
+    align-items:center;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+  }
+  .brand {display:flex;flex-direction:column}
+  h1{font-size:1.15rem;margin:0;color:var(--accent)}
+  .subtitle{font-size:.78rem;color:#22543d;opacity:.9}
+
+  main{
+    max-width:1100px;
+    margin:18px auto;
+    padding:12px;
+    display:grid;
+    grid-template-columns: 1fr;
+    gap:16px;
+  }
+
+  /* responsive: two columns on wide screens */
+  @media(min-width:900px){
+    main{grid-template-columns: 1fr 420px;}
+  }
+
+  section{
+    background: linear-gradient(180deg,rgba(255,255,255,0.8), rgba(255,255,255,0.7));
+    border-radius:14px;
+    padding:14px;
+    box-shadow: 0 6px 20px rgba(2,6,23,0.06);
+    overflow:hidden;
+  }
+
+  .sim-canvas{
+    width:100%;
+    height:260px;
+    border-radius:10px;
+    display:block;
+    touch-action:manipulation;
+    background: linear-gradient(180deg, rgba(255,255,255,0.35), rgba(255,255,255,0.05));
+  }
+
+  .controls {display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+  .btn {padding:8px 12px; border-radius:10px; border:none; cursor:pointer; background:var(--accent); color:white; font-weight:600}
+  .btn.secondary {background:#3182ce}
+  .muted {background:transparent;border:1px solid rgba(0,0,0,0.06); color:#082032;padding:8px 10px;border-radius:10px}
+
+  .small {font-size:.9rem}
+  label{display:block;font-size:.9rem;margin-bottom:6px;color:#0f172a}
+  input[type="range"]{width:100%}
+  textarea{width:100%;height:88px;border-radius:10px;padding:10px;border:1px solid rgba(0,0,0,0.06);resize:vertical}
+
+  .stat{display:flex;align-items:center;gap:8px}
+  .stat strong{font-size:1.05rem;color:var(--accent)}
+
+  footer{padding:18px;text-align:center;color:#22543d;opacity:.9}
+
+  /* tiny helper */
+  .hint{font-size:.82rem;color:#234e3a;opacity:.9}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>🌿 생태·환경 인터랙티브 (풀옵션)</h1>
+    <div class="subtitle">시뮬레이션 · 실시간 날씨 · 자연음 · 탄소발자국 계산기</div>
+  </div>
+
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+    <button class="btn" id="soundToggle">자연음 켜기</button>
+    <button class="btn secondary" id="resetApp">초기화</button>
+  </div>
+</header>
+
+<main>
+  <!-- Left column: interactive sections -->
+  <div style="display:grid;gap:16px">
+    <!-- Simulation -->
+    <section>
+      <h2>🌱 생태 시뮬레이션</h2>
+      <div class="hint">화면(또는 탭)을 터치하면 생명체가 태어납니다. 길게 누르면 '나무'가 자라요.</div>
+      <canvas id="simCanvas" class="sim-canvas"></canvas>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="clearSim">장면 초기화</button>
+        <button class="muted" id="toggleTrails">트레일 토글</button>
+        <div style="margin-left:auto" class="stat"><span class="hint">생명체 수</span><strong id="creCount">0</strong></div>
+      </div>
+    </section>
+
+    <!-- Weather & dynamic background -->
+    <section>
+      <h2>☁️ 실시간 날씨 & 배경 자동 전환</h2>
+      <div class="hint">위치 접근 허용 시 현재 기온을 가져와 배경과 분위기를 자동으로 조절합니다.</div>
+      <div id="weatherBlock" style="margin-top:10px">
+        <div id="weatherStatus">위치/날씨 정보를 불러오는 중…</div>
+        <div id="weatherDetail" style="margin-top:10px"></div>
+      </div>
+      <div style="margin-top:12px">
+        <label>날씨 기반 배경 강도</label>
+        <input id="bgIntensity" type="range" min="0" max="1" step="0.05" value="0.8">
+      </div>
+    </section>
+
+    <!-- Carbon calculator -->
+    <section>
+      <h2>⚖️ 탄소발자국 계산기 (예상값)</h2>
+      <div class="hint">매년 배출되는 CO₂e(kg) 예측 — 간단한 계수 기반 계산(산출은 예시용)</div>
+
+      <div style="display:grid;gap:8px;margin-top:10px">
+        <div>
+          <label>월간 전기 사용량 (kWh)</label>
+          <input id="inpElectric" type="range" min="0" max="1000" step="1" value="200">
+          <div class="small hint">값: <span id="valElectric">200</span> kWh</div>
+        </div>
+
+        <div>
+          <label>주간 자동차 주행 (km)</label>
+          <input id="inpCar" type="range" min="0" max="5000" step="10" value="200">
+          <div class="small hint">값: <span id="valCar">200</span> km / week</div>
+        </div>
+
+        <div>
+          <label>식단: <select id="dietSelect" style="padding:6px;border-radius:8px">
+            <option value="0.9">고기 중심</option>
+            <option value="0.6" selected>혼합식</option>
+            <option value="0.4">식물 중심</option>
+          </select></label>
+          <div class="small hint">계수는 식단에 따른 연간 배출 가중치(예시)</div>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn" id="calcCarbon">계산하기</button>
+          <button class="muted" id="saveCarbon">저장</button>
+          <div style="margin-left:auto" class="stat"><span class="hint">최근 계산</span><strong id="lastCarbon">—</strong></div>
+        </div>
+
+        <canvas id="carbonChart" style="height:200px;margin-top:8px"></canvas>
+      </div>
+    </section>
+  </div>
+
+  <!-- Right column: info, quotes, small widgets -->
+  <div style="display:grid;gap:16px">
+    <section>
+      <h2>📊 기후 트렌드 (샘플 데이터)</h2>
+      <canvas id="trendChart" style="height:200px"></canvas>
+      <div class="hint" style="margin-top:8px">시뮬레이션용 평균 기온 그래프 (2000–2025)</div>
+    </section>
+
+    <section>
+      <h2>🔊 자연음 컨트롤</h2>
+      <div class="hint">웹오디오로 생성한 비/새 소리 — 데이터 사용 x</div>
+      <div style="margin-top:10px;display:grid;gap:8px">
+        <label>비 세기 <input id="rainLevel" type="range" min="0" max="1" step="0.01" value="0.3"></label>
+        <label>새소리 밀도 <input id="birdLevel" type="range" min="0" max="1" step="0.01" value="0.4"></label>
+        <label>전체 볼륨 <input id="masterVol" type="range" min="0" max="1" step="0.01" value="0.6"></label>
+      </div>
+    </section>
+
+    <section>
+      <h2>💬 생태 명언</h2>
+      <div id="quoteBlock" style="font-style:italic;color:#1b3b2c">"자연은 우리가 빌려 쓰는 집이다."</div>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn" id="newQuote">명언 바꾸기</button>
+        <button class="muted" id="shareSnapshot">스냅샷 저장</button>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer>© 2025 생태·환경 인터랙티브 — Designed by ChatGPT · 로컬 실행 가능</footer>
+
+<!-- --- SCRIPTS --- -->
+<script>
+/* -----------------------------
+   Utilities & State
+   ----------------------------- */
+const state = {
+  creatures: [],
+  trails: true,
+  simRunning: true,
+  audioOn: false,
+  audioNodes: null,
+  lastCarbonKg: null,
+  weather: null
+};
+
+const q = sel => document.querySelector(sel);
+const qa = sel => document.querySelectorAll(sel);
+
+/* -----------------------------
+   Simulation: particles + trees
+   - click: spawn creature
+   - long-press: plant tree
+   ----------------------------- */
+const simCanvas = q('#simCanvas');
+const sctx = simCanvas.getContext('2d');
+let simW=0, simH=0;
+function resizeSim(){ simW = simCanvas.width = simCanvas.clientWidth; simH = simCanvas.height = simCanvas.clientHeight; }
+resizeSim();
+window.addEventListener('resize', resizeSim);
+
+let longPressTimer = null;
+let isTouching=false;
+simCanvas.addEventListener('pointerdown', e=>{
+  isTouching=true;
+  const rect=simCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left, y = e.clientY - rect.top;
+  longPressTimer = setTimeout(()=>{
+    // plant tree (larger, static)
+    state.creatures.push({x,y,size:18,type:'tree',age:0,color:'#276749'});
+    updateCount();
+  }, 500);
+});
+simCanvas.addEventListener('pointerup', e=>{
+  isTouching=false;
+  if(longPressTimer){ // short tap spawns creature if timer not fired
+    clearTimeout(longPressTimer); longPressTimer = null;
+    const rect=simCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    spawnCreature(x,y);
+  }
+});
+simCanvas.addEventListener('pointerleave', ()=>{ if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null;} });
+
+function spawnCreature(x,y){
+  const c = {
+    x, y,
+    vx:(Math.random()-0.5)*2,
+    vy:(Math.random()-0.6)*1.2,
+    size: Math.random()*4+3,
+    color: `hsl(${Math.random()*90+80}, 60%, ${45+Math.random()*20}%)`,
+    life: 0,
+    type:'creature'
+  };
+  state.creatures.push(c);
+  updateCount();
+}
+
+/* draw loop */
+function simTick(){
+  if(!state.trails){
+    sctx.clearRect(0,0,simW,simH);
+  } else {
+    // semi-transparent overlay for soft trails
+    sctx.fillStyle = 'rgba(255,255,255,0.08)';
+    sctx.fillRect(0,0,simW,simH);
+  }
+
+  for(let i=state.creatures.length-1;i>=0;i--){
+    const c = state.creatures[i];
+    if(c.type === 'tree'){
+      // tree grows slowly
+      c.age += 0.02;
+      sctx.beginPath();
+      sctx.fillStyle = c.color;
+      sctx.arc(c.x, c.y - c.age*2, c.size + c.age*4, 0, Math.PI*2);
+      sctx.fill();
+      sctx.fillStyle = '#6b4226';
+      sctx.fillRect(c.x - (4 + c.age*0.6), c.y + 6, 6 + c.age*1.2, 8);
+      if(c.age > 30) state.creatures.splice(i,1); // decay very old tree (keeps sim light)
+    } else {
+      c.life += 1;
+      c.vy += 0.02; // gravity
+      c.x += c.vx; c.y += c.vy;
+      // simple edge bounce
+      if(c.x < 0 || c.x > simW) c.vx *= -0.9;
+      if(c.y > simH) { c.y = simH; c.vy *= -.6; c.vx *= .98; }
+      // draw
+      sctx.beginPath();
+      const g = sctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, c.size*3);
+      g.addColorStop(0, c.color);
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      sctx.fillStyle = g;
+      sctx.arc(c.x, c.y, c.size*3, 0, Math.PI*2);
+      sctx.fill();
+      // age out
+      if(c.life > 200 + Math.random()*200) state.creatures.splice(i,1);
+    }
+  }
+  requestAnimationFrame(simTick);
+}
+simTick();
+
+q('#clearSim').addEventListener('click', ()=>{
+  state.creatures = []; updateCount();
+  sctx.clearRect(0,0,simW,simH);
+});
+q('#toggleTrails').addEventListener('click', ()=>{
+  state.trails = !state.trails;
+  q('#toggleTrails').innerText = state.trails ? '트레일 켬' : '트레일 끔';
+});
+function updateCount(){ q('#creCount').innerText = state.creatures.length; }
+
+/* -----------------------------
+   Weather: open-meteo (no key), dynamic background
+   ----------------------------- */
+const weatherStatus = q('#weatherStatus');
+const weatherDetail = q('#weatherDetail');
+const bgIntensity = q('#bgIntensity');
+
+function applyBackground(tempC, weatherCode){
+  // choose color palette by temp and code
+  // cold -> bluish, moderate -> green, hot -> warm orange/red, rainy -> darkened
+  let top='#dff7e6', bottom='#bfeccb';
+  if(tempC <= 0){ top = '#dff4ff'; bottom = '#cfefff'; }
+  else if(tempC <= 10){ top = '#e6f8e8'; bottom = '#d4f0d9'; }
+  else if(tempC <= 20){ top = '#dff7e6'; bottom = '#bfeccb'; }
+  else if(tempC <= 30){ top = '#fff4e0'; bottom = '#ffd9b3'; }
+  else { top = '#fff0f0'; bottom = '#ffd1c1'; }
+  // if rainy (codes >= 61 per open-meteo), darken
+  const rainyCodes = [51,53,55,61,63,65,80,81,82,95,96,99];
+  if(rainyCodes.includes(weatherCode)) {
+    top = shade(top, -8); bottom = shade(bottom, -10);
+  }
+  const strength = parseFloat(bgIntensity.value);
+  document.body.style.background = `linear-gradient(180deg, ${mixColors('#ffffff',top,strength)}, ${mixColors('#ffffff',bottom,strength)})`;
+}
+
+/* helper: mix two hex colors by t (0..1) */
+function mixColors(a,b,t){
+  const pa = hexToRgb(a), pb = hexToRgb(b);
+  const r = Math.round(pa.r*(1-t)+pb.r*t), g = Math.round(pa.g*(1-t)+pb.g*t), bl = Math.round(pa.b*(1-t)+pb.b*t);
+  return `rgb(${r},${g},${bl})`;
+}
+function hexToRgb(hex){
+  hex = hex.replace('#','');
+  if(hex.length===3) hex = hex.split('').map(x=>x+x).join('');
+  const num = parseInt(hex,16);
+  return {r:(num>>16)&255, g:(num>>8)&255, b:num&255};
+}
+/* shade hex by percent (-100..100) */
+function shade(hex,percent){
+  const c = hexToRgb(hex);
+  const t = percent < 0 ? 0 : 255;
+  const p = Math.abs(percent)/100;
+  const r = Math.round((t - c.r) * p) + c.r;
+  const g = Math.round((t - c.g) * p) + c.g;
+  const b = Math.round((t - c.b) * p) + c.b;
+  return `rgb(${r},${g},${b})`;
+}
+
+/* fetch weather by geolocation */
+function fetchWeather(lat,lon){
+  weatherStatus.innerText = '현재 위치로 날씨를 불러옵니다…';
+  fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`)
+    .then(r=>r.json())
+    .then(d=>{
+      const w = d.current_weather;
+      state.weather = w;
+      weatherStatus.innerText = `현재: ${w.temperature}°C | 풍속 ${w.windspeed} km/h | 코드 ${w.weathercode}`;
+      weatherDetail.innerHTML = `<div class="small">데이터 출처: open-meteo.com · 좌표: ${lat.toFixed(3)}, ${lon.toFixed(3)}</div>`;
+      applyBackground(w.temperature, w.weathercode);
+    })
+    .catch(err=>{
+      weatherStatus.innerText = '날씨 정보를 가져오지 못했습니다.';
+    });
+}
+
+if(navigator.geolocation){
+  navigator.geolocation.getCurrentPosition(pos=>{
+    fetchWeather(pos.coords.latitude,pos.coords.longitude);
+  }, err=>{
+    weatherStatus.innerText = '위치 접근이 거부되었습니다. 수동으로 배경을 조절하세요.';
+  });
+} else {
+  weatherStatus.innerText = '브라우저에서 위치 기능을 지원하지 않습니다.';
+}
+bgIntensity.addEventListener('input', ()=>{
+  if(state.weather) applyBackground(state.weather.temperature, state.weather.weathercode);
+});
+
+/* -----------------------------
+   WebAudio: synthesized rain + birds
+   - no external audio files (works offline)
+   ----------------------------- */
+let audioCtx = null;
+function ensureAudio(){
+  if(!audioCtx){
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+}
+
+/* rain: filtered noise node with adjustable intensity */
+function createRainNode(level=0.4){
+  const ctx = audioCtx;
+  const bufferSize = 2*ctx.sampleRate;
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for(let i=0;i<bufferSize;i++){
+    data[i] = (Math.random()*2-1)*0.7;
+  }
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+  noise.loop = true;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'bandpass';
+  lp.frequency.value = 1200;
+  lp.Q.value = 0.8;
+
+  const gain = ctx.createGain();
+  gain.gain.value = level * 0.6;
+
+  noise.connect(lp).connect(gain);
+  return {noise, gain};
+}
+
+/* birds: scheduled chirps using oscillators */
+function createBirds(level=0.4){
+  const ctx = audioCtx;
+  const master = ctx.createGain();
+  master.gain.value = level * 0.7;
+  function chirp(time){
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.value = 1200 + Math.random()*800;
+    g.gain.value = 0;
+    o.connect(g); g.connect(master);
+    o.start(time);
+    g.gain.linearRampToValueAtTime(0.9, time + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.3 + Math.random()*0.6);
+    o.stop(time + 0.6 + Math.random()*0.6);
+  }
+  // scheduler: returns stopper with start/stop control
+  let running = false, timer=null;
+  function start(){
+    if(running) return; running=true;
+    const loop = () => {
+      const now = ctx.currentTime;
+      // schedule a few chirps
+      const count = 1 + Math.floor(Math.random()*3);
+      for(let i=0;i<count;i++){
+        chirp(now + Math.random()*2.5);
+      }
+      timer = setTimeout(loop, 2000 + Math.random()*4000);
+    };
+    loop();
+  }
+  function stop(){
+    running=false; if(timer) clearTimeout(timer);
+  }
+  return {master, start, stop};
+}
+
+let audioState = {rainNode:null,birds:null,masterGain:null};
+
+function startAudio(){
+  ensureAudio();
+  if(audioState.masterGain) return;
+  const ctx = audioCtx;
+  const master = ctx.createGain(); master.gain.value = parseFloat(q('#masterVol').value);
+  master.connect(ctx.destination);
+  // rain
+  const rain = createRainNode(parseFloat(q('#rainLevel').value));
+  rain.noise.connect(rain.gain);
+  rain.gain.connect(master);
+  rain.noise.start();
+  // birds
+  const birds = createBirds(parseFloat(q('#birdLevel').value));
+  birds.master.connect(master);
+  birds.start();
+
+  audioState = {rainNode:rain, birds:birds, masterGain:master};
+  state.audioOn = true;
+  q('#soundToggle').innerText = '자연음 끄기';
+}
+
+function stopAudio(){
+  if(!audioState.masterGain) return;
+  try{
+    audioState.rainNode.noise.stop();
+  }catch(e){}
+  audioState.birds.stop();
+  audioState = {rainNode:null,birds:null,masterGain:null};
+  state.audioOn = false;
+  q('#soundToggle').innerText = '자연음 켜기';
+}
+q('#soundToggle').addEventListener('click', async ()=>{
+  if(!state.audioOn){
+    await resumeAudioContextIfNeeded();
+    startAudio();
+  } else {
+    stopAudio();
+  }
+});
+
+async function resumeAudioContextIfNeeded(){
+  ensureAudio();
+  if(audioCtx.state === 'suspended'){
+    try{ await audioCtx.resume(); } catch(e){}
+  }
+}
+
+/* controls react to sliders */
+q('#rainLevel').addEventListener('input', ()=>{
+  const v=parseFloat(q('#rainLevel').value);
+  if(audioState.rainNode) audioState.rainNode.gain.gain.value = v*0.6;
+});
+q('#birdLevel').addEventListener('input', ()=>{
+  const v=parseFloat(q('#birdLevel').value);
+  if(audioState.birds) audioState.birds.master.gain.value = v*0.7;
+});
+q('#masterVol').addEventListener('input', ()=>{
+  const v=parseFloat(q('#masterVol').value);
+  if(audioState.masterGain) audioState.masterGain.gain.value = v;
+});
+
+/* -----------------------------
+   Carbon footprint calculator
+   - simple coefficients (illustrative)
+     * electricity: 0.45 kgCO2e per kWh (example)
+     * car: 0.21 kgCO2e per km (average small car)
+     * diet factor multiplies baseline food emissions (example)
+   ----------------------------- */
+const inpElectric = q('#inpElectric'), valElectric = q('#valElectric');
+const inpCar = q('#inpCar'), valCar = q('#valCar');
+const dietSelect = q('#dietSelect');
+const lastCarbon = q('#lastCarbon');
+
+inpElectric.addEventListener('input', ()=> valElectric.innerText = inpElectric.value);
+inpCar.addEventListener('input', ()=> valCar.innerText = inpCar.value);
+
+function computeCarbonAnnual(){
+  // monthly kWh to annual
+  const monthlyKwh = Number(inpElectric.value);
+  const annualKwh = monthlyKwh * 12;
+  const elecFactor = 0.45; // kgCO2e per kWh (example)
+  const elecKg = annualKwh * elecFactor;
+
+  // car: weekly km -> annual km
+  const weeklyKm = Number(inpCar.value);
+  const annualKm = weeklyKm * 52;
+  const carFactor = 0.21; // kgCO2e per km (example)
+  const carKg = annualKm * carFactor;
+
+  // food: baseline ~ 1500 kg/year * diet factor
+  const dietFactor = Number(dietSelect.value);
+  const foodKg = 1500 * dietFactor;
+
+  const total = Math.round((elecKg + carKg + foodKg));
+  return {elecKg:Math.round(elecKg), carKg:Math.round(carKg), foodKg:Math.round(foodKg), total};
+}
+
+let carbonChart = null;
+function renderCarbonChart(data){
+  const ctx = q('#carbonChart').getContext('2d');
+  if(carbonChart) carbonChart.destroy();
+  carbonChart = new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels:['전기','자동차','식단'],
+      datasets:[{data:[data.elecKg, data.carKg, data.foodKg], backgroundColor:['#68d391','#38a169','#2f855a']}]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{position:'bottom'}},
+      animation:{duration:800}
+    }
+  });
+}
+
+q('#calcCarbon').addEventListener('click', ()=>{
+  const res = computeCarbonAnnual();
+  state.lastCarbonKg = res.total;
+  q('#lastCarbon').innerText = res.total + ' kg CO₂e/년';
+  renderCarbonChart(res);
+});
+
+q('#saveCarbon').addEventListener('click', ()=>{
+  if(!state.lastCarbonKg) return alert('먼저 계산하세요');
+  localStorage.setItem('eco_last_carbon', JSON.stringify({
+    value: state.lastCarbonKg,
+    timestamp: new Date().toISOString()
+  }));
+  alert('저장되었습니다.');
+});
+
+/* load saved */
+(function loadSaved(){
+  const s = localStorage.getItem('eco_last_carbon');
+  if(s){ try{ const obj = JSON.parse(s); q('#lastCarbon').innerText = obj.value + ' kg CO₂e/년' }catch(e){} }
+})();
+
+/* -----------------------------
+   Climate trend sample chart
+   ----------------------------- */
+const trendCtx = q('#trendChart').getContext('2d');
+const trendChart = new Chart(trendCtx, {
+  type:'line',
+  data:{
+    labels:['2000','2005','2010','2015','2020','2025'],
+    datasets:[
+      {label:'평균기온 (예시: 서울)', data:[12.5,12.8,13.1,13.7,14.0,14.3], borderColor:'#2f855a', tension:0.4, fill:false},
+      {label:'평균기온 (예시: 세계)', data:[12.0,12.1,12.4,12.6,12.9,13.2], borderColor:'#38a169', tension:0.35, fill:false}
+    ]
+  },
+  options:{responsive:true, plugins:{legend:{position:'bottom'}}}
+});
+
+/* -----------------------------
+   Quote & snapshot
+   ----------------------------- */
+const quotes = [
+  "자연은 인간 없이도 존재하지만, 인간은 자연 없이는 존재할 수 없다. — 데이비드 애튼버러",
+  "지구를 돌보는 것은 미래에게 빚을 갚는 일이다.",
+  "나무 한 그루를 심는 것은 희망을 심는 일이다.",
+  "우리가 바꾸는 작은 습관이 지구를 살린다."
+];
+q('#newQuote').addEventListener('click', ()=> q('#quoteBlock').innerText = quotes[Math.floor(Math.random()*quotes.length)]);
+
+/* snapshot: save canvas + stats as data URL in localStorage */
+q('#shareSnapshot').addEventListener('click', ()=>{
+  // combine simCanvas and trendChart (draw as images into an offscreen canvas)
+  const off = document.createElement('canvas');
+  off.width = Math.max(simCanvas.width, 800);
+  off.height = 600;
+  const octx = off.getContext('2d');
+  // draw background gradient
+  octx.fillStyle = window.getComputedStyle(document.body).backgroundImage;
+  octx.fillRect(0,0,off.width,off.height);
+  // draw sim snapshot
+  octx.drawImage(simCanvas, 0, 0, off.width, off.height*0.5);
+  // draw mini stats text
+  octx.fillStyle = '#123';
+  octx.font = '18px sans-serif';
+  octx.fillText('생명체 수: ' + state.creatures.length, 16, off.height*0.52);
+  octx.fillText('최근 탄소(저장): ' + (localStorage.getItem('eco_last_carbon') ? JSON.parse(localStorage.getItem('eco_last_carbon')).value + ' kg' : '—'), 16, off.height*0.55);
+  // save dataURL
+  const url = off.toDataURL('image/png');
+  localStorage.setItem('eco_snapshot', url);
+  alert('스냅샷이 저장되었습니다 (로컬). "eco_snapshot" 키 확인 가능.');
+});
+
+/* -----------------------------
+   Reset
+   ----------------------------- */
+q('#resetApp').addEventListener('click', ()=>{
+  if(!confirm('앱 데이터를 초기화하시겠어요? (로컬 저장 포함)')) return;
+  localStorage.removeItem('eco_last_carbon');
+  localStorage.removeItem('eco_snapshot');
+  q('#lastCarbon').innerText = '—';
+  stopAudio();
+  state.creatures=[];
+  sctx.clearRect(0,0,simW,simH);
+  updateCount();
+  alert('초기화 완료');
+});
+
+/* -----------------------------
+   Small UX polish: persist quote and initial startup
+   ----------------------------- */
+(function init(){
+  const qSaved = localStorage.getItem('eco_quote');
+  if(qSaved) q('#quoteBlock').innerText = qSaved;
+  q('#newQuote').addEventListener('click', ()=> localStorage.setItem('eco_quote', q('#quoteBlock').innerText));
+  // preload a few creatures
+  for(let i=0;i<12;i++) spawnCreature(Math.random()*simW, Math.random()*simH*0.7);
+  // if ambient auto start on touch (mobile), defer audio unlock to first user gesture
+  document.body.addEventListener('touchstart', resumeAudioContextIfNeeded, {once:true});
+})();
+</script>
+</body>
+</html>
